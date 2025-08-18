@@ -1,3 +1,3 @@
-# ℹ️ Information
+# Information 📖
 
-Read on [`website`](https://mcengine-website.github.io/backpack/common/)!!!
+Info on [`website`](https://mcengine-website.github.io/backpack/common/)
