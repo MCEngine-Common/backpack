@@ -26,7 +26,7 @@ import java.util.UUID;
  *
  * <p>Responsibilities:</p>
  * <ul>
- *   <li>Open a virtual backpack inventory on right-clicking a backpack item.</li>
+ *   <li>Open a virtual backpack inventory on right-clicking a backpack item (block target or air, main hand or off-hand).</li>
  *   <li>Persist backpack contents on inventory close.</li>
  *   <li>Prevent putting backpacks inside backpacks (to avoid recursion/dupe issues).</li>
  *   <li>Clean up per-player state on disconnect.</li>
@@ -59,25 +59,46 @@ public class MCEngineBackPackListener implements Listener {
     /**
      * Handles right-clicks to open a backpack GUI when a backpack item is used.
      *
+     * <p>Changes:</p>
+     * <ul>
+     *   <li>Accepts both {@link Action#RIGHT_CLICK_AIR} and {@link Action#RIGHT_CLICK_BLOCK}.</li>
+     *   <li>Accepts both hands: {@link EquipmentSlot#HAND} and {@link EquipmentSlot#OFF_HAND}.</li>
+     *   <li>Uses the item actually in the triggering hand; if both hands hold backpacks,
+     *   the main-hand event is preferred to avoid double-open.</li>
+     *   <li>Runs at {@link EventPriority#HIGHEST} and does <b>not</b> ignore cancelled events,
+     *   ensuring other plugins cancelling interact-in-air won’t prevent opening.</li>
+     * </ul>
+     *
      * @param event the interaction event
      */
-    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onRightClickOpenBackpack(PlayerInteractEvent event) {
         Action action = event.getAction();
         if (action != Action.RIGHT_CLICK_AIR && action != Action.RIGHT_CLICK_BLOCK) return;
-        // Only handle main hand to avoid double-firing on servers where both hands trigger
-        if (event.getHand() != EquipmentSlot.HAND) return;
-
-        ItemStack item = event.getItem();
-        if (item == null) return;
-        if (!api.isBackpack(item)) return;
 
         Player player = event.getPlayer();
+
+        // Prefer main hand if both hands contain backpacks to avoid double-firing
+        ItemStack main = player.getInventory().getItemInMainHand();
+        ItemStack off  = player.getInventory().getItemInOffHand();
+
+        // Determine which hand triggered and pick the corresponding item
+        EquipmentSlot hand = event.getHand();
+        if (hand == null) return; // Safety guard
+
+        // If off-hand triggered but main-hand also holds a backpack, let the main-hand event handle it
+        if (hand == EquipmentSlot.OFF_HAND && api.isBackpack(main)) {
+            return;
+        }
+
+        ItemStack usedItem = (hand == EquipmentSlot.HAND) ? main : off;
+        if (usedItem == null || !api.isBackpack(usedItem)) return;
+
         event.setCancelled(true); // Prevent placing/using the head as a normal item
 
-        Inventory inv = api.openBackpack(item);
+        Inventory inv = api.openBackpack(usedItem);
         // Track which item should receive the saved contents on close
-        openBackpacks.put(player.getUniqueId(), item);
+        openBackpacks.put(player.getUniqueId(), usedItem);
         player.openInventory(inv);
     }
 
