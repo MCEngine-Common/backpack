@@ -11,25 +11,25 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Tab completer for the {@code /backpack} command.
+ * Tab completer for the {@code /backpack} command using two-level syntax.
  *
- * <p>Completions provided for two-level syntax:</p>
- * <ul>
- *   <li>Level 1: {@code default}</li>
- *   <li>Level 2 (under {@code default}): {@code give}</li>
- *   <li>Level 3 (player): online player names</li>
- *   <li>Level 5 (rows): {@code 1-6}</li>
- * </ul>
+ * <p>Correct completion path:</p>
+ * <pre>{@code
+ * /backpack default give [player-online] [hdb-id] [1-6]
+ * }</pre>
  *
- * <p>Notes:</p>
  * <ul>
- *   <li>No reliable autocomplete for HeadDatabase IDs (arg 4), so it is omitted.</li>
+ *   <li>Arg 1 → {@code default}</li>
+ *   <li>Arg 2 → {@code give}</li>
+ *   <li>Arg 3 → online player names</li>
+ *   <li>Arg 4 → (no suggestions; free-form HeadDatabase ID)</li>
+ *   <li>Arg 5 → row counts {@code 1..6}</li>
  * </ul>
  */
 public class BackPackTabCompleter implements TabCompleter {
 
     /**
-     * Provides tab completion for {@code /backpack}.
+     * Provides tab completion for {@code /backpack default give ...}.
      *
      * @param sender  command sender
      * @param command command object
@@ -43,7 +43,8 @@ public class BackPackTabCompleter implements TabCompleter {
 
         // /backpack <arg1>
         if (args.length == 1) {
-            if ("default".startsWith(args[0].toLowerCase())) {
+            String prefix = args[0].toLowerCase();
+            if ("default".startsWith(prefix)) {
                 out.add("default");
             }
             return out;
@@ -52,7 +53,8 @@ public class BackPackTabCompleter implements TabCompleter {
         // /backpack default <arg2>
         if (args.length == 2) {
             if ("default".equalsIgnoreCase(args[0])) {
-                if ("give".startsWith(args[1].toLowerCase()) && sender.hasPermission("mcengine.backpack.give")) {
+                String prefix = args[1].toLowerCase();
+                if ("give".startsWith(prefix) && sender.hasPermission("mcengine.backpack.give")) {
                     out.add("give");
                 }
                 return out;
@@ -76,7 +78,7 @@ public class BackPackTabCompleter implements TabCompleter {
 
         // /backpack default give <player> <hdb-id>
         if (args.length == 4) {
-            // No completion for HeadDatabase IDs
+            // No completion for HeadDatabase IDs; free-form entry
             return Collections.emptyList();
         }
 
