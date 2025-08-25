@@ -18,13 +18,12 @@ import java.util.List;
  * /backpack default give [player-online] [hdb-id] [1-6]
  * }</pre>
  *
+ * <p>This completer supports both raw and dispatcher-sliced modes:
  * <ul>
- *   <li>Arg 1 → {@code default}</li>
- *   <li>Arg 2 → {@code give}</li>
- *   <li>Arg 3 → online player names</li>
- *   <li>Arg 4 → (no suggestions; free-form HeadDatabase ID)</li>
- *   <li>Arg 5 → row counts {@code 1..6}</li>
+ *   <li><b>Raw:</b> args include {@code default} (e.g., {@code ["default", "give", ...]}).</li>
+ *   <li><b>Sub-scope:</b> dispatcher consumed {@code default} already (e.g., {@code ["give", ...]}).</li>
  * </ul>
+ * It normalizes by detecting and skipping the {@code default} token when present.</p>
  */
 public class BackPackTabCompleter implements TabCompleter {
 
@@ -39,33 +38,39 @@ public class BackPackTabCompleter implements TabCompleter {
      */
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        List<String> out = new ArrayList<>();
-
-        // /backpack <arg1>
-        if (args.length == 1) {
+        // Handle the root "/backpack " case (before "default") — suggest "default"
+        if (args.length == 1 && !"default".equalsIgnoreCase(args[0])) {
             String prefix = args[0].toLowerCase();
-            if ("default".startsWith(prefix)) {
-                out.add("default");
-            }
+            List<String> out = new ArrayList<>();
+            if ("default".startsWith(prefix)) out.add("default");
             return out;
         }
 
-        // /backpack default <arg2>
-        if (args.length == 2) {
-            if ("default".equalsIgnoreCase(args[0])) {
-                String prefix = args[1].toLowerCase();
-                if ("give".startsWith(prefix) && sender.hasPermission("mcengine.backpack.give")) {
-                    out.add("give");
-                }
-                return out;
-            }
+        // Normalize to "sub-scope" by skipping the 'default' token if present.
+        int offset = (args.length > 0 && "default".equalsIgnoreCase(args[0])) ? 1 : 0;
+        int stage = args.length - offset; // 1: give, 2: player, 3: hdb, 4: rows
+
+        // If we aren't in or after 'default', nothing more to suggest
+        if (offset == 0 && args.length == 1) {
             return Collections.emptyList();
         }
 
-        // /backpack default give <player>
-        if (args.length == 3) {
-            if ("default".equalsIgnoreCase(args[0]) && "give".equalsIgnoreCase(args[1]) && sender.hasPermission("mcengine.backpack.give")) {
-                String prefix = args[2].toLowerCase();
+        // Guard permission once we get into actionable subcommands
+        boolean canGive = sender.hasPermission("mcengine.backpack.give");
+
+        List<String> out = new ArrayList<>();
+
+        switch (stage) {
+            case 1 -> {
+                // /backpack default <here>  OR  (dispatcher-sliced) /backpack default <here>
+                String prefix = args[offset].toLowerCase();
+                if (canGive && "give".startsWith(prefix)) out.add("give");
+                return out;
+            }
+            case 2 -> {
+                // /backpack default give <player>
+                if (!canGive) return Collections.emptyList();
+                String prefix = args[offset + 1].toLowerCase();
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     if (p.getName().toLowerCase().startsWith(prefix)) {
                         out.add(p.getName());
@@ -73,28 +78,24 @@ public class BackPackTabCompleter implements TabCompleter {
                 }
                 return out;
             }
-            return Collections.emptyList();
-        }
-
-        // /backpack default give <player> <hdb-id>
-        if (args.length == 4) {
-            // No completion for HeadDatabase IDs; free-form entry
-            return Collections.emptyList();
-        }
-
-        // /backpack default give <player> <hdb-id> <rows>
-        if (args.length == 5) {
-            if ("default".equalsIgnoreCase(args[0]) && "give".equalsIgnoreCase(args[1]) && sender.hasPermission("mcengine.backpack.give")) {
-                String prefix = args[4];
+            case 3 -> {
+                // /backpack default give <player> <hdb-id>  -> no suggestions
+                if (!canGive) return Collections.emptyList();
+                return Collections.emptyList();
+            }
+            case 4 -> {
+                // /backpack default give <player> <hdb-id> <rows>
+                if (!canGive) return Collections.emptyList();
+                String prefix = args[offset + 3];
                 for (int i = 1; i <= 6; i++) {
                     String s = Integer.toString(i);
                     if (s.startsWith(prefix)) out.add(s);
                 }
                 return out;
             }
-            return Collections.emptyList();
+            default -> {
+                return Collections.emptyList();
+            }
         }
-
-        return Collections.emptyList();
     }
 }
