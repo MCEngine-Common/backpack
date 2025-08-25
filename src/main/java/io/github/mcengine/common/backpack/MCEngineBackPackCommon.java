@@ -2,6 +2,7 @@ package io.github.mcengine.common.backpack;
 
 import io.github.mcengine.api.backpack.MCEngineBackPackApi;
 import io.github.mcengine.api.core.util.MCEngineCoreApiDispatcher;
+import org.bukkit.Bukkit;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.inventory.Inventory;
@@ -44,12 +45,26 @@ public class MCEngineBackPackCommon {
 
     /**
      * Constructs a new common backpack manager and initializes its dispatcher and API.
+     * <p>
+     * This constructor also validates that the HeadDatabase plugin is present,
+     * since backpacks rely on custom heads for their appearance. If HeadDatabase
+     * is not detected, the owning plugin is disabled immediately.
+     * </p>
      *
      * @param plugin The owning Bukkit {@link Plugin} instance.
      */
     public MCEngineBackPackCommon(Plugin plugin) {
         instance = this;
         this.plugin = plugin;
+
+        // --- Dependency check: HeadDatabase ---
+        if (Bukkit.getPluginManager().getPlugin("HeadDatabase") == null) {
+            plugin.getLogger().severe("HeadDatabase plugin not found! MCEngineBackPack requires HeadDatabase to function.");
+            Bukkit.getPluginManager().disablePlugin(plugin);
+            throw new IllegalStateException("HeadDatabase dependency missing. Plugin disabled.");
+        }
+        // --------------------------------------
+
         this.backpackApi = new MCEngineBackPackApi(plugin);
         this.dispatcher = new MCEngineCoreApiDispatcher();
     }
