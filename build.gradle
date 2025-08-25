@@ -52,8 +52,8 @@ repositories {
                 name = repoName
                 url = uri(repoUrl)
                 credentials {
-                    username = project.user_git_name
-                    password = project.user_github_token ?: project.repository_token ?: project.organization_token
+                    username = user_git_name
+                    password = user_github_token ?: repository_token ?: organization_token
                 }
             }
         }
@@ -75,7 +75,7 @@ dependencies {
 shadowJar {
     version = version
     archiveClassifier = null
-    archiveBaseName = project.jarName
+    archiveBaseName = jarName
 }
 
 tasks.named('jar').configure {
@@ -86,10 +86,10 @@ publishing {
     repositories {
         maven {
             name = 'GitHubPackages'
-            url = uri("https://maven.pkg.github.com/${project.organization_name}/${project.repository_name}")
+            url = uri("https://maven.pkg.github.com/${organization_name}/${repository_name}")
             credentials {
-                username = project.user_git_name
-                password = project.user_github_token ?: project.repository_token ?: project.organization_token
+                username = user_git_name
+                password = user_github_token ?: repository_token ?: organization_token
             }
         }
     }
@@ -99,14 +99,14 @@ publishing {
             artifactId = 'backpack-common'
 
             pom {
-                name.set(project.jarName)
-                description.set("The ${project.jarName} Common is designed for use by BackPack plugin.")
-                url.set("https://github.com/${project.organization_name}/${project.repository_name}")
+                name.set(jarName)
+                description.set("The ${jarName} Common is designed for use by BackPack plugin.")
+                url.set("https://github.com/${organization_name}/${repository_name}")
 
                 scm {
-                    connection.set("scm:git:git://github.com/${project.organization_name}/${project.repository_name}.git")
-                    developerConnection.set("scm:git:ssh://github.com:${project.organization_name}/${project.repository_name}.git")
-                    url.set("https://github.com/${project.organization_name}/${project.repository_name}")
+                    connection.set("scm:git:git://github.com/${organization_name}/${repository_name}.git")
+                    developerConnection.set("scm:git:ssh://github.com:${organization_name}/${repository_name}.git")
+                    url.set("https://github.com/${organization_name}/${repository_name}")
                 }
 
                 developers {
