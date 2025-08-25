@@ -6,13 +6,16 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 
@@ -28,7 +31,8 @@ import java.util.UUID;
  * <ul>
  *   <li>Open a virtual backpack inventory on right-clicking a backpack item (block target or air, main hand or off-hand).</li>
  *   <li>Persist backpack contents on inventory close.</li>
- *   <li>Prevent putting backpacks inside backpacks (to avoid recursion/dupe issues).</li>
+ *   <li>Prevent placing, shifting, dragging, hotbar-swapping, or off-hand swapping of backpacks while a backpack GUI is open.</li>
+ *   <li>Prevent putting backpacks inside backpacks via <em>any</em> action.</li>
  *   <li>Clean up per-player state on disconnect.</li>
  * </ul>
  */
@@ -59,7 +63,7 @@ public class MCEngineBackPackListener implements Listener {
     /**
      * Handles right-clicks to open a backpack GUI when a backpack item is used.
      *
-     * <p>Changes:</p>
+     * <p>Behavior:</p>
      * <ul>
      *   <li>Accepts both {@link Action#RIGHT_CLICK_AIR} and {@link Action#RIGHT_CLICK_BLOCK}.</li>
      *   <li>Accepts both hands: {@link EquipmentSlot#HAND} and {@link EquipmentSlot#OFF_HAND}.</li>
@@ -124,7 +128,15 @@ public class MCEngineBackPackListener implements Listener {
     }
 
     /**
-     * Prevents placing backpacks inside backpack inventories to avoid recursion/duplication.
+     * Prevents moving backpacks while a backpack GUI is open and prevents putting backpacks inside backpacks.
+     *
+     * <p>Blocked interactions include:</p>
+     * <ul>
+     *   <li>Shift-click moves (both directions).</li>
+     *   <li>Number-key hotbar swaps (1–9).</li>
+     *   <li>Regular picks/places into the top inventory.</li>
+     *   <li>Move-to-other-inventory actions.</li>
+     * </ul>
      *
      * @param event the inventory click event
      */
@@ -132,22 +144,100 @@ public class MCEngineBackPackListener implements Listener {
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
 
-        // If the player isn't currently interacting with a tracked backpack, ignore
-        if (!openBackpacks.containsKey(player.getUniqueId())) return;
-
-        // Determine if the click targets the top inventory (the open backpack GUI)
-        Inventory clickedInv = event.getClickedInventory();
+        boolean isBackpackSession = openBackpacks.containsKey(player.getUniqueId());
         Inventory topInv = event.getView().getTopInventory();
-        if (clickedInv == null || topInv == null) return;
-
-        // Only apply restriction within the backpack GUI (top inventory)
-        if (!clickedInv.equals(topInv)) return;
+        Inventory clickedInv = event.getClickedInventory();
 
         ItemStack cursor = event.getCursor();
         ItemStack current = event.getCurrentItem();
 
-        // If trying to place or swap a backpack item into the backpack GUI, cancel it
-        if ((cursor != null && api.isBackpack(cursor)) || (current != null && api.isBackpack(current))) {
+        // If any backpack item is involved in the action while the backpack GUI is open, block it.
+        if (isBackpackSession) {
+            // Prevent placing backpacks into the top (backpack) inventory by any method
+            if (event.getView().getTopInventory() != null) {
+                // 1) Cursor into top
+                if (cursor != null && api.isBackpack(cursor) && event.getRawSlot() < topInv.getSize()) {
+                    event.setCancelled(true);
+                    return;
+                }
+                // 2) Shift-click from bottom into top
+                if (event.isShiftClick() && current != null && api.isBackpack(current)) {
+                    event.setCancelled(true);
+                    return;
+                }
+                // 3) Number key swap bringing a backpack into the top
+                if (event.getClick() == ClickType.NUMBER_KEY) {
+                    int hotbar = event.getHotbarButton();
+                    if (hotbar >= 0 && hotbar <= 8) {
+                        ItemStack hotbarItem = player.getInventory().getItem(hotbar);
+                        if (hotbarItem != null && api.isBackpack(hotbarItem)) {
+                            event.setCancelled(true);
+                            return;
+                        }
+                    }
+                }
+                // 4) Any move-to-other-inventory involving a backpack
+                if (event.getAction() == InventoryAction.MOVE_TO_OTHER_INVENTORY && current != null && api.isBackpack(current)) {
+                    event.setCancelled(true);
+                    return;
+                }
+                // 5) Prevent taking a backpack out of the top (no backpacks inside backpacks at all)
+                if (clickedInv != null && clickedInv.equals(topInv) && current != null && api.isBackpack(current)) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
+        }
+
+        // Additional hard guard: never allow backpacks to be placed inside the top backpack GUI,
+        // even if somehow the session mapping missed.
+        if (clickedInv != null && topInv != null && clickedInv.equals(topInv)) {
+            if ((cursor != null && api.isBackpack(cursor)) || (current != null && api.isBackpack(current))) {
+                event.setCancelled(true);
+            }
+        }
+    }
+
+    /**
+     * Prevents drag operations that would place backpack items inside the backpack GUI.
+     *
+     * @param event the inventory drag event
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (!openBackpacks.containsKey(player.getUniqueId())) return;
+
+        ItemStack dragged = event.getOldCursor();
+        if (dragged == null || !api.isBackpack(dragged)) return;
+
+        Inventory topInv = event.getView().getTopInventory();
+        int topSize = topInv.getSize();
+
+        // If any slot affected by the drag is in the top inventory, cancel
+        for (int rawSlot : event.getRawSlots()) {
+            if (rawSlot < topSize) {
+                event.setCancelled(true);
+                return;
+            }
+        }
+    }
+
+    /**
+     * Prevents swapping items with the off-hand (key "F") while a backpack GUI is open,
+     * especially when a backpack is involved.
+     *
+     * @param event the swap-hand-items event
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onSwapHands(PlayerSwapHandItemsEvent event) {
+        Player player = event.getPlayer();
+        if (!openBackpacks.containsKey(player.getUniqueId())) return;
+
+        ItemStack main = event.getMainHandItem();
+        ItemStack off = event.getOffHandItem();
+
+        if ((main != null && api.isBackpack(main)) || (off != null && api.isBackpack(off))) {
             event.setCancelled(true);
         }
     }
