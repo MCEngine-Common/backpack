@@ -66,8 +66,8 @@ dependencies {
     // Platform
     compileOnly 'org.spigotmc:spigot-api:1.21.8-R0.1-SNAPSHOT'
 
-    compileOnly 'io.github.mcengine:core-api:2025.0.9-4'
-    compileOnly 'io.github.mcengine:backpack-api:2025.0.9-4'
+    compileOnly 'io.github.mcengine:core-api:2025.0.9-5'
+    compileOnly 'io.github.mcengine:backpack-api:2025.0.9-5'
 
     compileOnly 'com.google.code.gson:gson:2.13.1'
 }
